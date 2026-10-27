@@ -593,7 +593,7 @@ def test_a_raising_plugin_cannot_issue_workflow_commands(catalogue, server, make
     """The reviewer's exact payload, raised by the plugin in the sandboxed dry run."""
     report = _payload_report(catalogue, server, make_ctx, sandbox)
     errors = all_errors(report)
-    assert "handler_failed" in errors and "Validation passed" in errors
+    assert "RuntimeError: boom\n::error title=Validation passed" in errors  # raw finding
     _no_command_line(vc.render_text(report))
     _no_command_line(_outside_diff(vc.render_summary(report)))
 
