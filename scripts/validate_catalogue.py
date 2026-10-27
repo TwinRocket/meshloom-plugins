@@ -552,6 +552,28 @@ def source_diff(old_tree: Path, new_tree: Path) -> tuple[str, int]:
 SYSTEM_DIRS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32")
 SYSTEM_FILES = ("/etc/ld.so.cache", "/etc/localtime")
 SANDBOX_PLUGIN_DIR = "/plugin"
+MAX_SYMLINK_HOPS = 40
+
+
+def symlink_hops(path: str) -> list[tuple[str, str]]:
+    """Every (link, target) met while resolving `path`, its parent directories included,
+    so the sandbox can recreate them (a venv interpreter often goes through a symlinked
+    directory, such as uv's `cpython-3.13-...` alias of the exact version)."""
+    hops: list[tuple[str, str]] = []
+    current = os.path.abspath(path)
+    while len(hops) < MAX_SYMLINK_HOPS:
+        prefix = "/"
+        for part in PurePosixPath(current).parts[1:]:
+            prefix = os.path.join(prefix, part)
+            if os.path.islink(prefix):
+                target = os.readlink(prefix)
+                hops.append((prefix, target))
+                rest = os.path.relpath(current, prefix)
+                current = os.path.normpath(os.path.join(os.path.dirname(prefix), target, rest))
+                break
+        else:
+            return hops
+    raise Failure(f"too many symbolic links while resolving {path}")
 
 
 @dataclass
@@ -601,9 +623,13 @@ class Sandbox:
                 bound.append(path)
         for path in SYSTEM_FILES:
             args += ["--ro-bind-try", path, path]
-        if not any(base_prefix == b or base_prefix.startswith(b + "/") for b in bound):
+        if not _under(base_prefix, bound):
             args += ["--ro-bind", base_prefix, base_prefix]
+            bound.append(base_prefix)
         checkout = str(self.meshloom_dir)
+        for link, target in symlink_hops(str(self.python)):
+            if not _under(link, [*bound, checkout]):
+                args += ["--symlink", target, link]
         args += [
             "--ro-bind", checkout, checkout,
             "--ro-bind", str(plugin_dir.resolve()), SANDBOX_PLUGIN_DIR,
@@ -648,6 +674,10 @@ class Sandbox:
         if not isinstance(report, dict) or "ok" not in report:
             raise Failure("dev check in the sandbox gave an unexpected report")
         return report
+
+
+def _under(path: str, roots: list[str]) -> bool:
+    return any(path == root or path.startswith(root.rstrip("/") + "/") for root in roots)
 
 
 def _finding(f: dict[str, Any]) -> str:

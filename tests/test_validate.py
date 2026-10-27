@@ -397,6 +397,27 @@ def test_plugin_code_never_runs_without_bwrap(tmp_path):
         box.command(tmp_path, "third_party", "/usr")
 
 
+def test_the_sandbox_recreates_the_interpreter_symlinks(tmp_path):
+    """A venv python reached through a symlinked directory (uv's minor-version alias)
+    must resolve inside the sandbox too."""
+    real = tmp_path / "python" / "cpython-3.13.9"
+    (real / "bin").mkdir(parents=True)
+    (real / "bin" / "python3.13").write_text("")
+    alias = tmp_path / "python" / "cpython-3.13"
+    alias.symlink_to("cpython-3.13.9")
+    checkout = tmp_path / "checkout"
+    (checkout / ".venv" / "bin").mkdir(parents=True)
+    venv_python = checkout / ".venv" / "bin" / "python"
+    venv_python.symlink_to(alias / "bin" / "python3.13")
+    box = vc.Sandbox(checkout, venv_python, bwrap="/usr/bin/bwrap")
+    args = box.command(tmp_path, "third_party", str(real.resolve()))
+    links = [args[i + 2] for i, arg in enumerate(args) if arg == "--symlink"]
+    assert str(alias) in links
+    assert args[args.index(str(alias)) - 1] == "cpython-3.13.9"
+    assert f"--ro-bind {real.resolve()} {real.resolve()}" in " ".join(args)
+    assert str(venv_python) not in links  # inside the bound checkout already
+
+
 def test_the_sandbox_has_no_network_and_read_only_views(tmp_path):
     box = vc.Sandbox(tmp_path, Path("/opt/py/bin/python"), bwrap="/usr/bin/bwrap")
     cmd = box.command(tmp_path, "third_party", "/opt/py")
