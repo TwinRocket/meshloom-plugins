@@ -1,0 +1,40 @@
+name: Request takedown / Demander un retrait
+description: Ask for a plugin or a version to be withdrawn from the catalogue. / Demander le retrait d'un plugin ou d'une version.
+title: "[takedown] "
+labels: ["takedown"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Authors may withdraw their own plugin. Rights holders may request the removal of
+        content that infringes their rights. The catalogue operator (the publisher named on
+        the Meshloom legal pages) decides and acts on the index and the archives.
+        Les auteurs peuvent retirer leur propre plugin. Les titulaires de droits peuvent
+        demander le retrait d'un contenu qui y porte atteinte. L'éditeur du service (nommé
+        dans les pages légales de Meshloom) décide et agit sur l'index et les archives.
+  - type: input
+    id: plugin-id
+    attributes:
+      label: Plugin id / Identifiant du plugin
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions (empty for all) / Versions (vide pour toutes)
+  - type: dropdown
+    id: requester
+    attributes:
+      label: You are / Vous êtes
+      options:
+        - The plugin author / L'auteur du plugin
+        - A rights holder / Un titulaire de droits
+        - Other / Autre
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Reason / Motif
+    validations:
+      required: true

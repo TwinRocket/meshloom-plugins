@@ -1,0 +1,32 @@
+name: Submit a plugin / Proposer un plugin
+description: Ask for help before opening a pull request. / Demander de l'aide avant d'ouvrir une pull request.
+title: "[submit] "
+labels: ["submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Submissions are pull requests that add `plugins/<id>.yaml` (see docs/authoring.md).
+        Use this issue if you need help or want early feedback.
+        Les soumissions sont des pull requests qui ajoutent `plugins/<id>.yaml` (voir
+        docs/authoring.fr.md). Utilisez cette issue pour demander de l'aide ou un avis.
+  - type: input
+    id: repo
+    attributes:
+      label: Plugin repository / Dépôt du plugin
+      placeholder: owner/name
+    validations:
+      required: true
+  - type: input
+    id: plugin-id
+    attributes:
+      label: Plugin id / Identifiant du plugin
+      placeholder: owner.name
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What it does and which permissions it needs / Ce qu'il fait et ses permissions
+    validations:
+      required: true

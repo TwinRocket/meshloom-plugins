@@ -1,0 +1,42 @@
+name: Report a plugin / Signaler un plugin
+description: A security, privacy, licence or content problem with a listed plugin. / Un problème de sécurité, de confidentialité, de licence ou de contenu.
+title: "[report] "
+labels: ["report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not publish exploit details or personal data here: for a vulnerability, use the
+        contact on the Meshloom legal pages instead. When users are at risk, the plugin can
+        be revoked first and investigated afterwards.
+        Ne publiez ici ni détail d'exploitation ni donnée personnelle : pour une
+        vulnérabilité, utilisez le contact des pages légales de Meshloom. Si des
+        utilisateurs sont exposés, le plugin peut être révoqué d'abord, instruit ensuite.
+  - type: input
+    id: plugin-id
+    attributes:
+      label: Plugin id / Identifiant du plugin
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Affected versions / Versions concernées
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of problem / Type de problème
+      options:
+        - Security / Sécurité
+        - Privacy / Confidentialité
+        - Licence / Licence
+        - Misleading or illegal content / Contenu trompeur ou illicite
+        - Other / Autre
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details / Détails
+    validations:
+      required: true
