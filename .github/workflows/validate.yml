@@ -7,8 +7,13 @@
 #   both a preflight job and a first step in every job fail closed on anything else;
 # - plugin archives are downloaded and extracted in fresh temp dirs and only ever run
 #   inside bubblewrap (scripts/validate_catalogue.py);
-# - the validator and its schemas come from the base commit, so a pull request cannot
-#   change the rules it is judged by (except the bootstrap, when the base has none).
+# - the validator and its schemas run from the base commit, so this workflow does not judge a
+#   pull request with rules that pull request edits (except the bootstrap, when the base
+#   has none). That is not a protection on its own: a pull request that edits the rules is
+#   reviewed by the code owners like any change, and an entry pull request that touches
+#   anything else is refused by the validator and must be rejected;
+# - entries are compared at the merge base of the base and head commits, so a branch that
+#   is behind main is judged on its own changes only.
 #
 # The owner setting "Require approval for first-time contributors" (Settings > Actions)
 # gates the first run of a newcomer's pull request; see AGENTS.md.
@@ -41,7 +46,7 @@ jobs:
         env:
           RUNNER_LABEL: ${{ vars.RUNNER }}
         run: |
-          if [ -n "$RUNNER_LABEL" ] && ! printf '%s' "$RUNNER_LABEL" | grep -Eqx 'ubuntu-(latest|2[2-9]\.04)(-arm)?'; then
+          if [ -n "$RUNNER_LABEL" ] && ! printf '%s' "$RUNNER_LABEL" | grep -Eqx 'ubuntu-latest|ubuntu-2[2-9]\.04(-arm)?'; then
             echo "::error::vars.RUNNER must be empty or a GitHub-hosted Ubuntu label; self-hosted runners never run catalogue pull requests"
             exit 1
           fi

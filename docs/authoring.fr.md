@@ -17,7 +17,7 @@ catalogue enregistre seulement la release à laquelle se fier, par son SHA-256.
    Ne remplacez jamais l'asset d'une release.
 3. **Ouvrir une pull request** qui ajoute ou complète `plugins/<id>.yaml` (exemple dans la
    version anglaise). Mettez `version` et `sha256` entre guillemets. Une mise à jour ajoute
-   une release à la fin, sans modifier les précédentes. Si une permission est ajoutée ou
+   une release à la fin, sans modifier les précédentes ; `id` et `repo` ne changent jamais. Si une permission est ajoutée ou
    élargie, indiquez `permissions_changed: true`. Cochez la déclaration de soumission.
 4. **La CI vérifie** le format, la taille annoncée puis l'empreinte, le contenu de
    l'archive, le manifeste, la licence, le nom, les liens, puis exécute le plugin à blanc

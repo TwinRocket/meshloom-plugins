@@ -57,7 +57,7 @@ releases:
 
 - Quote `version` and `sha256`: unquoted, YAML may read them as numbers.
 - An update appends one release at the end; existing releases are never edited or removed,
-  and `id` never changes.
+  and `id` and `repo` never change.
 - If the new release adds or widens a permission compared with the previous one, add
   `permissions_changed: true` to it. The CI fails when a permission changes without it.
 - Change only files under `plugins/` in that pull request (at most 10 entries, 5 new

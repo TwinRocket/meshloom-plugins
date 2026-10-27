@@ -3,11 +3,13 @@
     python scripts/validate_catalogue.py --base <sha> [--head HEAD] --meshloom <checkout>
         [--summary FILE] [--work DIR]
 
-For every `plugins/<id>.yaml` the pull request adds or changes:
+For every `plugins/<id>.yaml` the pull request adds or changes since the merge base of
+`--base` and `--head` (a branch behind main is judged on its own changes):
 
 1. the entry: schema (`schema/entry.schema.json`), file name = id, id publisher = the
    GitHub owner of `repo` (lowercased; `meshloom.*` only from TwinRocket, `local.*`
-   never), versions strictly increasing, existing releases unchanged;
+   never), versions strictly increasing, existing id, repo, releases and revocations
+   unchanged;
 2. each new release: `Content-Length` of `plugin.zip` at the tag checked with a HEAD
    request before anything is downloaded, then a bounded download into its own fresh
    directory under the work root (never inside the repository), the sha256, the archive
@@ -16,13 +18,16 @@ For every `plugins/<id>.yaml` the pull request adds or changes:
    against the entry, the licences of `vendor/`, the permission diff with the previous
    release, the French translation status and the rendered source diff;
 3. `python -m meshloom_plugin.dev check` from the pinned meshloom checkout, run inside
-   bubblewrap (no network, read-only views, fresh /tmp). The plugin's code is never
+   bubblewrap (no network, read-only views, fresh /tmp, hard rlimits). The plugin's code is never
    executed any other way: without a working `bwrap` the release fails.
 
 The server's own rules (licence list, reserved ids, misleading names, `https:` links,
 native code, nested archives...) are applied by `dev check`, never re-implemented here;
 the archive pre-check only covers what safe extraction needs and what re-zipping by
 `dev check` would hide (links, executable bits, compression, hidden entries).
+
+Untrusted strings never reach stdout or the job summary as workflow commands, Markdown
+or HTML (see `plain` and `md`).
 
 Exit status: 0 passed (including a pull request that changes no entry), 1 failed,
 2 usage error.
@@ -553,6 +558,28 @@ SYSTEM_DIRS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32")
 SYSTEM_FILES = ("/etc/ld.so.cache", "/etc/localtime")
 SANDBOX_PLUGIN_DIR = "/plugin"
 MAX_SYMLINK_HOPS = 40
+# Hard limits for bwrap and everything under it (meshloom's runner lowers them further
+# for the plugin code itself). RLIMIT_NPROC counts every task of the runner's uid.
+SANDBOX_RLIMITS = {
+    "RLIMIT_AS": 2 * 1024 * 1024 * 1024,
+    "RLIMIT_NPROC": 512,
+    "RLIMIT_FSIZE": 64 * 1024 * 1024,
+    "RLIMIT_CPU": 180,
+    "RLIMIT_CORE": 0,
+}
+SANDBOX_TMPFS_BYTES = 64 * 1024 * 1024
+
+
+def limit_resources() -> None:
+    """`preexec_fn` of the sandbox: hard resource limits, inherited by bwrap."""
+    import resource
+
+    for name, value in SANDBOX_RLIMITS.items():
+        which = getattr(resource, name)
+        _soft, hard = resource.getrlimit(which)
+        if hard != resource.RLIM_INFINITY:
+            value = min(value, hard)
+        resource.setrlimit(which, (value, value))
 
 
 def symlink_hops(path: str) -> list[tuple[str, str]]:
@@ -580,17 +607,32 @@ def symlink_hops(path: str) -> list[tuple[str, str]]:
 class Sandbox:
     """`python -m meshloom_plugin.dev check` from the pinned meshloom checkout, inside
     bubblewrap: every namespace new (no network), read-only system, interpreter,
-    checkout and plugin tree, a fresh tmpfs /tmp, an empty environment."""
+    checkout and plugin tree, a fresh tmpfs /tmp (size-capped when bwrap can), an empty
+    environment, hard resource limits (`SANDBOX_RLIMITS`) and a wall-clock timeout."""
 
     meshloom_dir: Path
     python: Path
     bwrap: str | None = None
+    tmpfs_size: bool | None = None  # bwrap >= 0.10 has `--size`; probed when None
 
     def __post_init__(self) -> None:
         self.meshloom_dir = self.meshloom_dir.resolve()
         self.python = self.python.absolute()
         if self.bwrap is None:
             self.bwrap = shutil.which("bwrap")
+        if self.tmpfs_size is None:
+            self.tmpfs_size = self._probe_size_option()
+
+    def _probe_size_option(self) -> bool:
+        if not self.bwrap:
+            return False
+        try:
+            out = subprocess.run(
+                [self.bwrap, "--help"], capture_output=True, timeout=10, check=False
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return b"--size" in out.stdout + out.stderr
 
     def base_prefix(self) -> str:
         out = subprocess.run(
@@ -635,6 +677,7 @@ class Sandbox:
             "--ro-bind", str(plugin_dir.resolve()), SANDBOX_PLUGIN_DIR,
             "--proc", "/proc",
             "--dev", "/dev",
+            *(["--size", str(SANDBOX_TMPFS_BYTES)] if self.tmpfs_size else []),
             "--tmpfs", "/tmp",
             "--remount-ro", "/",
             "--setenv", "PATH", "/usr/bin:/bin",
@@ -660,6 +703,7 @@ class Sandbox:
                 timeout=SANDBOX_TIMEOUT_SECONDS,
                 check=False,
                 env={"PATH": "/usr/bin:/bin"},
+                preexec_fn=limit_resources,  # single-threaded here
             )
         except subprocess.TimeoutExpired:
             raise Failure(f"dev check did not finish in {SANDBOX_TIMEOUT_SECONDS} s") from None
@@ -749,6 +793,8 @@ def entry_errors(entry: dict[str, Any], path: str, base: dict[str, Any] | None) 
     if base is not None:
         if base["id"] != entry_id:
             errors.append(f"{path}: the id never changes")
+        if base["repo"] != entry["repo"]:
+            errors.append(f"{path}: repo never changes (ask the catalogue operator to move it)")
         old = base["releases"]
         if entry["releases"][: len(old)] != old:
             errors.append(
@@ -923,8 +969,11 @@ def _validate_entry(
 
 
 def run(repo: Path, base: str, head: str, ctx: Context) -> RunReport:
+    """Validate what `head` changes since it left `base`: the merge base, not the base
+    tip, so entries merged on main after the branch started are not read as removals."""
     report = RunReport()
     try:
+        base = _git(repo, "merge-base", base, head).strip()
         changes = changed_paths(repo, base, head)
     except Failure as exc:
         report.errors.append(str(exc))
@@ -949,6 +998,34 @@ def run(repo: Path, base: str, head: str, ctx: Context) -> RunReport:
 
 
 # --- output -------------------------------------------------------------------
+#
+# Every string that may come from a plugin, a release server or a pull request is
+# untrusted. On stdout it must never start a workflow command (`::error ...`), and in the
+# job summary it must never become Markdown or HTML. `plain` keeps it on one line with
+# control characters shown escaped and `::` broken; `md` and `_code` build on it.
+
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+_MD_SPECIAL_RE = re.compile(r"([\\`*_{}\[\]()#+\-.!|~<>&])")
+
+
+def plain(text: object) -> str:
+    """One line that cannot be read as a workflow command."""
+    text = _CONTROL_RE.sub(lambda m: m.group().encode("unicode_escape").decode("ascii"), str(text))
+    return text.replace("::", ": :")
+
+
+def md(text: object) -> str:
+    """Untrusted text as literal Markdown (no markup, no HTML, no table break)."""
+    return _MD_SPECIAL_RE.sub(r"\\\1", plain(text))
+
+
+def _code(text: object) -> str:
+    """Untrusted text as one inline code span."""
+    text = plain(text)
+    longest = max((len(m) for m in re.findall(r"`+", text)), default=0)
+    ticks = "`" * (longest + 1)
+    pad = " " if text.startswith("`") or text.endswith("`") else ""
+    return f"{ticks}{pad}{text}{pad}{ticks}"
 
 
 def _fence(text: str) -> str:
@@ -964,13 +1041,13 @@ def _render_permissions(rel: ReleaseReport) -> list[str]:
     if not (diff["added"] or diff["removed"] or diff["changed"]):
         out.append("- unchanged")
     for name, params in diff["added"].items():
-        out.append(f"- added `{name}`: `{json.dumps(params, ensure_ascii=False)}`")
+        out.append(f"- added {_code(name)}: {_code(json.dumps(params, ensure_ascii=False))}")
     for name, change in diff["changed"].items():
         before = json.dumps(change["from"], ensure_ascii=False)
         after = json.dumps(change["to"], ensure_ascii=False)
-        out.append(f"- changed `{name}`: `{before}` -> `{after}`")
+        out.append(f"- changed {_code(name)}: {_code(before)} -> {_code(after)}")
     for name in diff["removed"]:
-        out.append(f"- removed `{name}`")
+        out.append(f"- removed {_code(name)}")
     if rel.sensitive:
         out.append(
             "- **sensitive**: reads direct messages or every channel and has `http` "
@@ -1007,22 +1084,23 @@ def render_summary(report: RunReport) -> str:
         out.append("No catalogue entry changed: nothing to validate.")
         return "\n".join(out) + "\n"
     out += [f"**Result: {'passed' if report.ok else 'failed'}**", ""]
-    out += [f"- error: {e}" for e in report.errors]
+    out += [f"- error: {md(e)}" for e in report.errors]
     for entry in report.entries:
-        out += ["", f"### `{entry.path}`", ""]
-        out += [f"- error: {e}" for e in entry.errors]
+        out += ["", f"### {_code(entry.path)}", ""]
+        out += [f"- error: {md(e)}" for e in entry.errors]
         for rel in entry.releases:
-            against = f" (against {rel.previous})" if rel.previous else " (new plugin)"
+            against = f" (against {md(rel.previous)})" if rel.previous else " (new plugin)"
             verdict = "passed" if rel.ok else "failed"
-            out += ["", f"#### {rel.entry_id} {rel.version}{against}: {verdict}", ""]
-            out += [f"- error: {e}" for e in rel.errors]
-            out += [f"- warning: {w}" for w in rel.warnings]
+            title = f"{md(rel.entry_id)} {md(rel.version)}"
+            out += ["", f"#### {title}{against}: {verdict}", ""]
+            out += [f"- error: {md(e)}" for e in rel.errors]
+            out += [f"- warning: {md(w)}" for w in rel.warnings]
             if rel.dry_run_calls is not None:
                 out.append(f"- dry run in the sandbox: {rel.dry_run_calls} call(s) to the host")
             out += _render_permissions(rel)
             if rel.french:
                 out += ["", "**French translation**", "", "| item | fr |", "|---|---|"]
-                out += [f"| {k} | {v} |" for k, v in rel.french.items()]
+                out += [f"| {md(k)} | {md(v)} |" for k, v in rel.french.items()]
             out += _render_diff(rel)
     return "\n".join(out) + "\n"
 
@@ -1030,18 +1108,29 @@ def render_summary(report: RunReport) -> str:
 def render_text(report: RunReport) -> str:
     if not report.entries and not report.errors:
         return "No catalogue entry changed: nothing to validate.\n"
-    lines = [f"error: {e}" for e in report.errors]
+    lines = [f"error: {plain(e)}" for e in report.errors]
     for entry in report.entries:
-        lines.append(f"{entry.path}: {'ok' if entry.ok else 'FAILED'}")
-        lines += [f"  error: {e}" for e in entry.errors]
+        lines.append(f"{plain(entry.path)}: {'ok' if entry.ok else 'FAILED'}")
+        lines += [f"  error: {plain(e)}" for e in entry.errors]
         for rel in entry.releases:
-            lines.append(f"  {rel.entry_id} {rel.version}: {'ok' if rel.ok else 'FAILED'}")
-            lines += [f"    error: {e}" for e in rel.errors]
-            lines += [f"    warning: {w}" for w in rel.warnings]
+            verdict = "ok" if rel.ok else "FAILED"
+            lines.append(f"  {plain(rel.entry_id)} {plain(rel.version)}: {verdict}")
+            lines += [f"    error: {plain(e)}" for e in rel.errors]
+            lines += [f"    warning: {plain(w)}" for w in rel.warnings]
             if rel.diff_lines is not None:
                 lines.append(f"    source diff: {rel.diff_lines} changed line(s)")
     lines.append("OK" if report.ok else "FAILED")
     return "\n".join(lines) + "\n"
+
+
+def write_stdout(text: str) -> None:
+    """In GitHub Actions, also stop workflow-command processing around the report, with a
+    token nobody can guess, so even a missed escape cannot issue a command."""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        sys.stdout.write(text)
+        return
+    token = os.urandom(16).hex()
+    sys.stdout.write(f"::stop-commands::{token}\n{text}::{token}::\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1075,7 +1164,7 @@ def main(argv: list[str] | None = None) -> int:
     if report.entries and sandbox is None:
         # Fail closed: an entry is never accepted without the sandboxed dev check.
         report.errors.append("--meshloom is required to validate entries (dev check)")
-    sys.stdout.write(render_text(report))
+    write_stdout(render_text(report))
     if args.summary:
         with args.summary.open("a", encoding="utf-8") as fh:
             fh.write(render_summary(report))

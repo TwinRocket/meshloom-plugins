@@ -44,14 +44,23 @@ written; the tests read it from there. It is a full commit SHA on `preversion-5`
   refuses a runner whose `RUNNER_ENVIRONMENT` is not `github-hosted`.
 - Actions limited to `actions/checkout`, `actions/setup-python` and `astral-sh/setup-uv`,
   pinned by commit SHA; jobs time out within 15 minutes; one run per pull request.
-- The validator and its schemas come from the base commit, so a pull request cannot change
-  the rules it is judged by (the bootstrap pull request, whose base has none, is the only
-  exception). A pull request that changes entries and anything else is refused.
+- The validator and its schemas run from the base commit, so the workflow never judges a
+  pull request with rules that pull request edits (the bootstrap, whose base has none, is
+  the only exception). This is not a protection by itself: changes to the validator, the
+  schemas or the workflow are protected by code-owner review, and an entry pull request
+  that touches anything else is refused by the validator and must be rejected.
+- Entries are compared at the merge base of the base and head commits (a branch behind
+  main is judged on its own changes); an existing entry keeps its `id`, `repo`, releases
+  and revocations.
+- Output: every untrusted string (plugin findings, server replies, manifest text) is kept
+  on one line with control characters escaped and `::` broken, escaped as Markdown in the
+  job summary, and stdout is wrapped in `::stop-commands::<random token>` in Actions.
 - Archives: `Content-Length` checked on `HEAD` before any download, bounded download,
   SHA-256 checked, contents inspected before extraction, extraction into fresh temp
   directories outside the repository. Plugin code runs only under bubblewrap (no network,
-  no environment, read-only filesystem); no `bwrap` means a failure, never an unsandboxed
-  run.
+  no environment, read-only filesystem, a size-capped tmpfs when bwrap supports `--size`,
+  hard rlimits on memory, tasks, file size and CPU, a wall-clock timeout); no `bwrap`
+  means a failure, never an unsandboxed run.
 
 ## Repository settings (owner actions, not enforced by any file here)
 

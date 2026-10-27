@@ -32,7 +32,9 @@ def test_there_is_a_workflow():
 @pytest.mark.parametrize("path", sorted(p for p in GITHUB.rglob("*") if p.is_file()), ids=str)
 def test_no_secrets_and_no_pull_request_target_anywhere(path):
     text = path.read_text(encoding="utf-8")
-    assert "secrets." not in text and "secrets[" not in text
+    # also catches toJSON(secrets) and `secrets: inherit`
+    assert not re.search(r"\bsecrets\b", text, re.IGNORECASE)
+    assert "github.token" not in text and "GITHUB_TOKEN" not in text
     assert "pull_request_target" not in text
     assert "workflow_run" not in text
 
@@ -87,7 +89,11 @@ def test_the_preflight_allowlist_fails_closed():
     pattern = re.search(r"grep -Eqx '([^']+)'", step).group(1)
     for good in ("ubuntu-latest", "ubuntu-24.04", "ubuntu-24.04-arm", "ubuntu-22.04"):
         assert re.fullmatch(pattern, good), good
-    for bad in ("self-hosted", "flasher-builder", "ubuntu-latest,self-hosted", "linux", "macos-15"):
+    bad_labels = (
+        "self-hosted", "flasher-builder", "ubuntu-latest,self-hosted", "linux", "macos-15",
+        "ubuntu-latest-arm", "ubuntu-24.04-arm,self-hosted",
+    )  # fmt: skip
+    for bad in bad_labels:
         assert not re.fullmatch(pattern, bad), bad
 
 

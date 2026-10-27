@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import shutil
 import stat
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -521,3 +524,134 @@ def test_json_output_of_dev_check_becomes_readable_findings():
     finding = {"stage": "scan", "code": "import_forbidden", "message": "no", "path": "a.py"}
     assert vc._finding({**finding, "line": 3}) == "dev check [scan] a.py:3: import_forbidden: no"
     assert json.dumps(finding)  # the report is plain JSON
+
+
+# --- untrusted output ------------------------------------------------------------
+
+PAYLOAD = "boom\n::error title=Validation passed::all good\n::notice::injected"
+RAISING_PLUGIN = (f"async def on_message(event):\n    raise RuntimeError({PAYLOAD!r})\n").encode()
+
+
+def _no_command_line(text: str) -> None:
+    for line in text.splitlines():
+        assert not line.lstrip().startswith("::"), line
+    assert "::error" not in text and "::notice" not in text
+
+
+def _outside_diff(summary: str) -> str:
+    """The summary without the fenced source diff, which shows the plugin code verbatim
+    on purpose (a fence longer than any backtick run; job summaries run no command)."""
+    return summary.split("<details><summary>Rendered diff</summary>")[0]
+
+
+class _StubSandbox:
+    """A dev check whose findings carry the payload (stage, code, path and message)."""
+
+    def check(self, plugin_dir, origin):
+        finding = {"stage": "run", "code": "handler_failed", "path": PAYLOAD, "message": PAYLOAD}
+        return {"ok": False, "errors": [finding], "warnings": [finding], "skipped": [PAYLOAD]}
+
+
+def _payload_report(catalogue, server, make_ctx, sandbox=None) -> vc.RunReport:
+    body = make_zip(extra={"plugin.py": RAISING_PLUGIN})
+    base, head = submit(catalogue, server, body)
+    return vc.run(catalogue.root, base, head, make_ctx(sandbox or _StubSandbox()))
+
+
+def test_findings_cannot_issue_workflow_commands(catalogue, server, make_ctx):
+    report = _payload_report(catalogue, server, make_ctx)
+    assert not report.ok
+    text = vc.render_text(report)
+    _no_command_line(text)
+    assert "boom\\n: :error title=Validation passed: :all good" in text
+
+
+def test_findings_cannot_become_markdown(catalogue, server, make_ctx):
+    report = _payload_report(catalogue, server, make_ctx)
+    rel = one_release(report)
+    rel.errors.append("<img src=x onerror=alert(1)> | [link](https://evil.example) **bold**")
+    rel.french = {"name | x": "<b>gras</b>\n# titre"}
+    summary = _outside_diff(vc.render_summary(report))
+    _no_command_line(summary)
+    assert not re.search(r"(?<!\\)<(img|b)", summary)  # every < escaped
+    assert "\\<img src=x onerror=alert\\(1\\)\\>" in summary
+    assert "\\[link\\]\\(https" in summary and "\\*\\*bold\\*\\*" in summary
+    assert r"| name \| x | \<b\>gras\</b\>\\n\# titre |" in summary
+
+
+def test_stdout_stops_workflow_commands_in_actions(catalogue, server, capsys, monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    vc.write_stdout(PAYLOAD + "\n")
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith("::stop-commands::")
+    token = out[0].removeprefix("::stop-commands::")
+    assert len(token) == 32
+    assert out[-1] == f"::{token}::"
+
+
+def test_a_raising_plugin_cannot_issue_workflow_commands(catalogue, server, make_ctx, sandbox):
+    """The reviewer's exact payload, raised by the plugin in the sandboxed dry run."""
+    report = _payload_report(catalogue, server, make_ctx, sandbox)
+    errors = all_errors(report)
+    assert "handler_failed" in errors and "Validation passed" in errors
+    _no_command_line(vc.render_text(report))
+    _no_command_line(_outside_diff(vc.render_summary(report)))
+
+
+def test_plain_escapes_control_characters():
+    assert vc.plain("a\r\nb\x1b[31m c::d") == "a\\r\\nb\\x1b[31m\\u2028c: :d"
+    assert vc._code("x`y") == "``x`y``" and vc._code("`x") == "`` `x ``"
+
+
+# --- branches behind main -----------------------------------------------------------
+
+
+def test_a_branch_behind_main_is_judged_on_its_own_changes(catalogue, server, make_ctx):
+    """main moved on (another entry merged) after the pull request branched off."""
+    start = catalogue.git("rev-parse", "HEAD")
+    other = make_zip(sample_manifest(id="bob.tool"))
+    server.publish("bob/tool", "v1.0.0", other)
+    release = {"version": "1.0.0", "tag": "v1.0.0", "sha256": sha256(other)}
+    catalogue.write("plugins/bob.tool.yaml", entry_yaml([release], "bob.tool", "bob/tool"))
+    catalogue.write("README.md", "catalogue, edited on main\n")
+    main_tip = catalogue.commit("merged on main")
+    catalogue.git("checkout", "-q", "-b", "pr", start)
+    _, head = submit(catalogue, server, make_zip())
+    report = vc.run(catalogue.root, main_tip, head, make_ctx())
+    assert report.ok, all_errors(report)
+    assert [e.path for e in report.entries] == ["plugins/acme.echo.yaml"]
+
+
+def test_repo_never_changes(catalogue, server, make_ctx):
+    body = make_zip()
+    server.publish("acme/echo", "v1.0.0", body)
+    first = {"version": "1.0.0", "tag": "v1.0.0", "sha256": sha256(body)}
+    catalogue.write("plugins/acme.echo.yaml", entry_yaml([first]))
+    base = catalogue.commit("1.0.0")
+    catalogue.write("plugins/acme.echo.yaml", entry_yaml([first], repo="acme/echo-fork"))
+    head = catalogue.commit("move")
+    report = vc.run(catalogue.root, base, head, make_ctx())
+    assert "repo never changes" in all_errors(report)
+
+
+# --- sandbox limits ------------------------------------------------------------------
+
+
+def test_the_sandbox_caps_its_tmpfs_when_bwrap_can(tmp_path):
+    box = vc.Sandbox(tmp_path, Path("/opt/py/bin/python"), bwrap="/usr/bin/bwrap", tmpfs_size=True)
+    joined = " ".join(box.command(tmp_path, "third_party", "/opt/py"))
+    assert f"--size {vc.SANDBOX_TMPFS_BYTES} --tmpfs /tmp" in joined
+    box.tmpfs_size = False
+    assert "--size" not in box.command(tmp_path, "third_party", "/opt/py")
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rlimits")
+def test_the_sandbox_resource_limits_apply_to_the_child():
+    script = "import resource; print(resource.getrlimit(resource.RLIMIT_NPROC)[1])"
+    out = subprocess.run(
+        [sys.executable, "-I", "-c", script],
+        capture_output=True,
+        check=True,
+        preexec_fn=vc.limit_resources,
+    ).stdout
+    assert int(out) <= vc.SANDBOX_RLIMITS["RLIMIT_NPROC"]
