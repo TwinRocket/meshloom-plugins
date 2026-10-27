@@ -65,9 +65,15 @@ written; the tests read it from there. It is a full commit SHA on `preversion-5`
 ## Repository settings (owner actions, not enforced by any file here)
 
 - Settings > Actions > "Require approval for first-time contributors" (or stricter).
-- A ruleset on `main`: pull request required, review by a code owner, no direct push, the
-  `result` check required. Signed commits are **not** required (agent pull requests could
-  not satisfy it).
+- A ruleset on `main` (id 25927154): pull request required, review by a code owner, no
+  direct push, no deletion, no non-fast-forward, the `result` check required, and signed
+  commits required (`required_signatures`).
+- Merge method: squash only (merge commits and rebase merges disabled). GitHub signs the
+  squash commit, so unsigned contributor or agent commits still merge.
+- Settings > Actions > General: `allowed_actions=selected` (GitHub-owned actions plus
+  `astral-sh/setup-uv@*`) and `sha_pinning_required=true`. Adding a new third-party action
+  means adding it to this allow-list (owner action) and pinning it by full commit SHA in
+  the workflow.
 - Keep `vars.RUNNER` empty or a GitHub-hosted label.
 
 ## Working rules
