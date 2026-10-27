@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Plugin developer guide / Guide du développeur de plugins
+    url: https://github.com/TwinRocket/meshloom/tree/preversion-5/docs/dev/plugins
+    about: How to write a Meshloom plugin (5.0.0 development branch until the release). / Comment écrire un plugin Meshloom (branche de développement de la 5.0.0 jusqu'à sa sortie).

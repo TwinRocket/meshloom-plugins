@@ -1,0 +1,40 @@
+[project]
+name = "meshloom-plugins"
+version = "0.0.0"
+description = "Validation tooling of the Meshloom plugin catalogue (not a package)"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    # Catalogue entries (plugins/<id>.yaml).
+    "pyyaml>=6.0.2,<7",
+    # Same version line as meshloom (pyproject.toml there: jsonschema>=4.26,<5).
+    "jsonschema>=4.26,<5",
+    # Release ordering (SemVer precedence), as meshloom does.
+    "packaging>=24",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.8.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM"]
+ignore = ["S101", "S603", "S607"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S310", "S108"]
+# /tmp there is the sandbox's own fresh tmpfs, never the host's.
+"scripts/validate_catalogue.py" = ["S108"]
