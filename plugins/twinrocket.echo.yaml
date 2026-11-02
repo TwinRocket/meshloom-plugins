@@ -1,0 +1,7 @@
+id: twinrocket.echo
+repo: TwinRocket/meshloom-plugins
+tier: reviewed
+releases:
+  - version: "1.0.0"
+    tag: sample-echo-1.0.0
+    sha256: "9cd0810c3d3deaef0be616d0e7e148b1188ec104f10696aa5379297fea1999de"
