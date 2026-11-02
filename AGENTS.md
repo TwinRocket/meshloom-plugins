@@ -53,8 +53,8 @@ written; the tests read it from there. It is a full commit SHA on `preversion-5`
   main is judged on its own changes); an existing entry keeps its `id`, `repo`, releases
   and revocations.
 - Output: every untrusted string (plugin findings, server replies, manifest text) is kept
-  on one line with control characters escaped and `::` broken, escaped as Markdown in the
-  job summary, and stdout is wrapped in `::stop-commands::<random token>` in Actions.
+  on one line with control characters escaped and no `::` left (`:::` becomes `: : :`),
+  escaped as Markdown in the job summary (`@` and `:` too, so nothing autolinks), and stdout is wrapped in `::stop-commands::<random token>` in Actions.
 - Archives: `Content-Length` checked on `HEAD` before any download, bounded download,
   SHA-256 checked, contents inspected before extraction, extraction into fresh temp
   directories outside the repository. Plugin code runs only under bubblewrap (no network,
@@ -75,6 +75,12 @@ written; the tests read it from there. It is a full commit SHA on `preversion-5`
   means adding it to this allow-list (owner action) and pinning it by full commit SHA in
   the workflow.
 - Keep `vars.RUNNER` empty or a GitHub-hosted label.
+
+## French text
+
+The validator only reports whether name, summary, README and i18n strings have a French
+version (a table in the job summary). It never fails on it: third-party authors may not
+write French and the catalogue requires English only. Do not turn it into an error.
 
 ## Working rules
 

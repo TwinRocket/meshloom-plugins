@@ -600,7 +600,19 @@ def test_a_raising_plugin_cannot_issue_workflow_commands(catalogue, server, make
 
 def test_plain_escapes_control_characters():
     assert vc.plain("a\r\nb\x1b[31m c::d") == "a\\r\\nb\\x1b[31m\\u2028c: :d"
+    for raw in (":::", "::::", "a:::b", "::", ":", "x::\n::y", "\x1b::"):
+        assert "::" not in vc.plain(raw), raw
+        assert "::" not in vc.md(raw), raw
+    assert vc.plain(":::") == ": : :"
     assert vc._code("x`y") == "``x`y``" and vc._code("`x") == "`` `x ``"
+
+
+def test_md_defeats_autolinks_from_untrusted_text():
+    text = "mail bob@example.com see https://evil.example/x and www.evil.example"
+    out = vc.md(text)
+    assert "@" not in out.replace("\\@", "")
+    assert re.search(r"(?<!\\):", out) is None  # every colon escaped: no scheme
+    assert "mailto" not in out
 
 
 # --- branches behind main -----------------------------------------------------------

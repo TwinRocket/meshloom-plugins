@@ -23,7 +23,9 @@ The manifest must satisfy the contract. In particular:
   LGPL-3.0-only, MIT, MPL-2.0. Bundled code under `vendor/` must declare an accepted
   licence as well (dist-info `License-Expression`, `License` or classifier).
 - The name must not imitate Meshloom or another publisher; links must use `https:`.
-- Text shown to users (name, summary, permission reasons) is given in English and French.
+- Text shown to users (name, summary, permission reasons) must be in English. A French
+  translation is welcome: the CI reports whether it is present but never rejects a plugin
+  for lacking it.
 
 ## 2. Publish a release
 

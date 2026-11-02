@@ -409,6 +409,8 @@ def contract_errors(manifest: dict[str, Any], contract: dict[str, Any]) -> list[
     return errors
 
 
+# The French text is reported, never enforced: third-party authors may not write French
+# and the catalogue itself requires English only (docs/authoring.md).
 def french_status(manifest: dict[str, Any]) -> dict[str, str]:
     def has_fr(key: str) -> str:
         value = manifest.get(key)
@@ -1005,13 +1007,16 @@ def run(repo: Path, base: str, head: str, ctx: Context) -> RunReport:
 # control characters shown escaped and `::` broken; `md` and `_code` build on it.
 
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
-_MD_SPECIAL_RE = re.compile(r"([\\`*_{}\[\]()#+\-.!|~<>&])")
+# `@` and `:` are escaped as well (`.` already is) so that GitHub's autolinking (e-mail
+# addresses, `scheme:` and `www.` URLs) never turns untrusted text into a link.
+_MD_SPECIAL_RE = re.compile(r"([\\`*_{}\[\]()#+\-.!|~<>&@:])")
 
 
 def plain(text: object) -> str:
-    """One line that cannot be read as a workflow command."""
+    """One line that cannot be read as a workflow command: the result never contains `::`."""
     text = _CONTROL_RE.sub(lambda m: m.group().encode("unicode_escape").decode("ascii"), str(text))
-    return text.replace("::", ": :")
+    # A space after every colon that is followed by another one: ':::' becomes ': : :'.
+    return re.sub(r":(?=:)", ": ", text)
 
 
 def md(text: object) -> str:
