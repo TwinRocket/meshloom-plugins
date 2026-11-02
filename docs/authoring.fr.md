@@ -10,7 +10,7 @@ catalogue enregistre seulement la release à laquelle se fier, par son SHA-256.
    le propriétaire GitHub du dépôt en minuscules ; `meshloom.*` et `local.*` sont réservés.
    Licence acceptée : Apache-2.0, BSD-2-Clause, BSD-3-Clause, GPL-3.0-only, ISC,
    LGPL-3.0-only, MIT ou MPL-2.0 (y compris pour `vendor/`). Nom non trompeur, liens en
-   `https:`, textes en anglais et en français.
+   `https:`, textes en anglais (la traduction française est bienvenue : la CI la signale sans la refuser).
 2. **Publier une release GitHub** avec un asset `plugin.zip` (manifeste à la racine, 5 Mio
    au plus, 20 Mio décompressés, 2000 entrées, fichiers ordinaires seulement : ni lien
    symbolique, ni bit exécutable, ni bibliothèque native, ni fichier caché, ni bytecode).
