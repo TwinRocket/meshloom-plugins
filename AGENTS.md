@@ -29,7 +29,7 @@ check out meshloom at `MESHLOOM_REF`, run `uv sync --frozen --no-dev` in it, and
   and attaches `plugin.zip`, `plugin.zip.sha256`, `manifest.json`). It is a folder, not a
   repository: the owner may publish it as a GitHub template repository by copying it
   (owner action). Its `MESHLOOM_REF` and action SHAs must equal `validate.yml`'s
-  (`tests/test_template.py` checks); moving the pin means updating both, and the template's
+  (`tests/test_template.py` checks); that test file also parses the release command (exactly the three assets, `pack --strict`) and feeds the produced assets to meshloom's `custom_repos.fetch_release`; moving the pin means updating both, and the template's
   plugin must still pass `check`, `run --replay` and the validator. Its workflow is inert
   here (GitHub only runs the root `.github/`).
 - `keys/`: public index keys, empty until T17 (signed index and `publish.yml`).

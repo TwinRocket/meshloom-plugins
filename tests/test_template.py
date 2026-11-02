@@ -7,8 +7,10 @@ The template is a folder of this repository, not a package: its own tests run in
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -185,9 +187,141 @@ def test_the_release_workflow_pins_its_actions_like_the_catalogue():
         assert ref == pinned[name], f"{name} must use the SHA the catalogue pins"
 
 
+def step_run(name: str) -> str:
+    (job,) = load(RELEASE)["jobs"].values()
+    (step,) = [s for s in job["steps"] if s.get("name") == name]
+    return step["run"]
+
+
+def release_command(run: str) -> list[str]:
+    """The `gh release create ...` command of a step's script, as argv (shell variables
+    stay unexpanded: only the literal file arguments matter here)."""
+    words = shlex.split(run.replace("\\\n", " "), comments=True)
+    return words[words.index("gh") :]
+
+
+def attached(run: str) -> set[str]:
+    """The files `gh release create` attaches: its positional arguments after the tag.
+    Flags and their values (`--repo "$GITHUB_REPOSITORY"`, `"${flags[@]}"`) are skipped."""
+    command = release_command(run)
+    assert command[:3] == ["gh", "release", "create"], command
+    positional, skip = [], False
+    for word in command[3:]:
+        if skip:
+            skip = False
+        elif word in ("--repo", "--title", "--notes", "--target"):
+            skip = True
+        elif not word.startswith(("-", "$")) or word == "$TAG" or word == '"$TAG"':
+            positional.append(word)
+    assert positional[0] == "$TAG", positional  # the tag comes first
+    return set(positional[1:])
+
+
+ASSETS = {"dist/plugin.zip", "dist/plugin.zip.sha256", "plugin/manifest.json"}
+
+
 def test_the_release_workflow_never_replaces_an_asset():
     text = RELEASE.read_text(encoding="utf-8")
     assert "--clobber" not in text and "gh release upload" not in text
-    assert "gh release create" in text and "--verify-tag" in text
-    for asset in ("dist/plugin.zip", "dist/plugin.zip.sha256", "plugin/manifest.json"):
-        assert asset in text
+    run = step_run("Create the release")
+    assert release_command(run)[:3] == ["gh", "release", "create"]
+    assert "--verify-tag" in run
+
+
+def test_the_release_attaches_exactly_the_three_assets_meshloom_reads():
+    # meshloom custom_repos.fetch_release needs manifest.json, plugin.zip and
+    # plugin.zip.sha256 on the release; a missing one is "repository_assets_missing".
+    assert attached(step_run("Create the release")) == ASSETS
+
+
+def test_the_asset_paths_also_appear_outside_the_release_command():
+    # why a substring search over the file proves nothing
+    assert "dist/plugin.zip.sha256" in step_run("Check and pack")
+    assert "plugin/manifest.json" in step_run("The tag is the manifest version")
+
+
+@pytest.mark.parametrize("asset", sorted(ASSETS))
+def test_dropping_an_asset_from_the_release_command_is_detected(asset):
+    run = step_run("Create the release")
+    mutated = re.sub(rf"(?<=\s){re.escape(asset)}(?=\s|$)", "", run)
+    assert mutated != run
+    assert attached(mutated) == ASSETS - {asset}
+
+
+def test_the_release_packs_strictly_into_dist():
+    run = step_run("Check and pack")
+    assert " pack " in run and "--strict" in run.split()
+    assert '--out "$GITHUB_WORKSPACE/dist"' in run
+    assert '"$GITHUB_WORKSPACE/plugin"' in run
+
+
+FETCH = """
+import asyncio, json, sys
+from pathlib import Path
+import app.plugins.custom_repos as cr
+
+served = {name: Path(path).read_bytes() for name, path in json.loads(sys.argv[1]).items()}
+
+async def latest_tag(repo):
+    return "v1.0.0", "acme/meshloom-hello"
+
+async def asset(display, tag, name, max_bytes):
+    return served.get(name)
+
+cr.latest_tag = latest_tag
+cr._asset = asset
+repo = cr.parse_repository("acme/meshloom-hello")
+release = asyncio.run(cr.fetch_release(repo, with_archive=True))
+print(json.dumps({"id": release.entry["id"], "sha256": release.sha256, "size": release.size}))
+"""
+
+
+def fetch_with(tmp_path: Path, files: dict[str, Path]) -> subprocess.CompletedProcess[str]:
+    root = meshloom_dir()
+    return subprocess.run(
+        [
+            str(root / ".venv" / "bin" / "python"),
+            "-c",
+            FETCH,
+            json.dumps({k: str(v) for k, v in files.items()}),
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+
+def served_assets(tmp_path: Path) -> dict[str, Path]:
+    """What the release workflow attaches, keyed by the asset name GitHub serves.
+
+    The workflow's own command line decides which files are present; `pack` (run on a
+    copy of the template's plugin folder) builds `dist/` as the pack step does.
+    """
+    pack(tmp_path)
+    served = {}
+    for asset in attached(step_run("Create the release")):
+        directory, _, name = asset.partition("/")
+        served[name] = {"dist": tmp_path / "dist", "plugin": TEMPLATE / "plugin"}[directory] / name
+    return served
+
+
+def test_the_released_assets_install_through_meshloom_custom_repository(tmp_path):
+    served = served_assets(tmp_path)
+    assert set(served) == {"plugin.zip", "plugin.zip.sha256", "manifest.json"}
+    done = fetch_with(tmp_path, served)
+    assert done.returncode == 0, done.stdout + done.stderr
+    result = json.loads(done.stdout.strip().splitlines()[-1])
+    manifest = json.loads((TEMPLATE / "plugin/manifest.json").read_text(encoding="utf-8"))
+    assert result["id"] == manifest["id"]
+    assert result["sha256"] == served["plugin.zip.sha256"].read_text().split()[0]
+
+
+@pytest.mark.parametrize("missing", ["plugin.zip", "plugin.zip.sha256", "manifest.json"])
+def test_meshloom_refuses_a_release_missing_one_asset(tmp_path, missing):
+    # the failure the three-asset check guards against
+    served = served_assets(tmp_path)
+    del served[missing]
+    done = fetch_with(tmp_path, served)
+    assert done.returncode != 0 and "repository_assets_missing" in done.stdout + done.stderr
