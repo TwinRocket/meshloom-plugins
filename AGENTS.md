@@ -24,13 +24,21 @@ check out meshloom at `MESHLOOM_REF`, run `uv sync --frozen --no-dev` in it, and
   `docs/dev/plugins/` at the pin; `tests/test_schema_contract.py` checks the equality.
 - `scripts/validate_catalogue.py`: the validator the CI runs on the changed entries.
 - `tests/fixtures/sample_plugin/`: copy of meshloom `tests/plugin_dev/echo` at the pin.
+- `template/`: the plugin template authors copy (MSHL-211): `plugin/` (what `pack` zips),
+  `tests/` (run through the pinned meshloom tooling), `.github/workflows/release.yml` (builds
+  and attaches `plugin.zip`, `plugin.zip.sha256`, `manifest.json`). It is a folder, not a
+  repository: the owner may publish it as a GitHub template repository by copying it
+  (owner action). Its `MESHLOOM_REF` and action SHAs must equal `validate.yml`'s
+  (`tests/test_template.py` checks); moving the pin means updating both, and the template's
+  plugin must still pass `check`, `run --replay` and the validator. Its workflow is inert
+  here (GitHub only runs the root `.github/`).
 - `keys/`: public index keys, empty until T17 (signed index and `publish.yml`).
 
 ## The meshloom pin
 
 `MESHLOOM_REF` in `.github/workflows/validate.yml` is the only place the meshloom commit is
 written; the tests read it from there. It is a full commit SHA on `preversion-5` until
-5.0.0 ships, then the commit of the 5.0.0 tag. To move it: change `MESHLOOM_REF`, copy
+5.0.0 ships, then the commit of the 5.0.0 tag. To move it: change `MESHLOOM_REF` (and the template's, `template/.github/workflows/release.yml`), copy
 `docs/dev/plugins/manifest.schema.json`, `docs/dev/plugins/vectors/manifest.json` and
 `tests/plugin_dev/echo/*` again from that commit, and run the gate with `MESHLOOM_DIR`.
 
@@ -87,8 +95,8 @@ write French and the catalogue requires English only. Do not turn it into an err
 - Docs in sync on every change: any change to code, CI, schema or settings comes with a
   check of the docs that describe it (this file, README, `docs/`, templates, headers),
   fixed in the same pull request; the pull request body lists the docs checked.
-- Author-facing text (`docs/authoring*.md`, pull request and issue templates) exists in
-  English and French; never drop a language.
+- Author-facing text (`docs/authoring*.md`, `template/README*.md`, the template's plugin
+  texts, pull request and issue templates) exists in English and French; never drop a language.
 - Code, comments and dev docs in English.
 - Agents never merge, never change repository settings, never add a plugin entry on their
   own initiative.

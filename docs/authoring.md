@@ -5,14 +5,30 @@ French summary: [authoring.fr.md](authoring.fr.md).
 This catalogue lists reviewed Meshloom plugins. You keep your plugin in your own GitHub
 repository; the catalogue only records which release to trust, by its SHA-256.
 
+## 0. Start from the template
+
+[`template/`](../template/) is a working plugin with its tests and a release workflow. Copy
+it into a repository of yours and follow its [README](../template/README.md) (French:
+[README.fr.md](../template/README.fr.md)). The workflow builds `plugin.zip`, its SHA-256 and
+`manifest.json` and attaches them to a GitHub release when you push a `v<version>` tag; the
+same assets let anyone install your plugin from Meshloom as a custom repository
+(Settings > Extensions > Custom repositories), without waiting for the catalogue.
+
 ## 1. Build and check the plugin
 
-Follow the plugin developer guide in the Meshloom repository (`docs/dev/plugins/`). Before
-submitting, run the same check the CI runs, from a Meshloom checkout:
+Follow the plugin developer guide in the Meshloom repository (`docs/dev/plugins.md`, "Checking
+a plugin" and "Harness"). Before submitting, run the same check the CI runs, from a Meshloom
+checkout:
 
 ```sh
 python -m meshloom_plugin.dev check path/to/your-plugin --origin third_party
 ```
+
+The same tool replays events against a fake host (`run path/to/your-plugin --replay
+fixture.json`, permissions, quotas and send guards are the server's; it does not simulate the
+2 s spacing between sends, the `http.fetch` host rules and egress guard, or the storage quota
+across runs) and builds the archive of step 2 (`pack path/to/your-plugin --out dist` writes a
+reproducible `plugin.zip` and `plugin.zip.sha256`, in the format the catalogue checks).
 
 The manifest must satisfy the contract. In particular:
 
@@ -30,7 +46,8 @@ The manifest must satisfy the contract. In particular:
 ## 2. Publish a release
 
 Create a GitHub release whose tag points at the version and attach one asset named
-`plugin.zip`, with `manifest.json` at the root of the archive. Limits:
+`plugin.zip`, with `manifest.json` at the root of the archive (the template's workflow does
+this for you). Limits:
 
 - archive at most 5 MiB, served with a `Content-Length` header (GitHub does this);
 - at most 20 MiB uncompressed and 2000 entries;
@@ -38,7 +55,8 @@ Create a GitHub release whose tag points at the version and attach one asset nam
   no `__pycache__` or `.pyc`, no native libraries (`.so`, `.pyd`, `.dll`, `.dylib`), no
   names that differ only by case or Unicode normalisation.
 
-Then compute the digest: `sha256sum plugin.zip` (or `shasum -a 256 plugin.zip`).
+Then compute the digest: `sha256sum plugin.zip` (or `shasum -a 256 plugin.zip`); `pack` and the
+template's workflow already write it to `plugin.zip.sha256`.
 
 A release asset must never be replaced: the catalogue checks the digest again when it
 publishes, and a changed archive is refused.

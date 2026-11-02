@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": {
+    "en": "Hello",
+    "fr": "Bonjour"
+  },
+  "properties": {
+    "greeting": {
+      "type": "string",
+      "maxLength": 100,
+      "default": "",
+      "title": {
+        "en": "Greeting",
+        "fr": "Salutation"
+      },
+      "description": {
+        "en": "Replaces the default greeting. {name} stands for the sender's name. Leave empty for the default.",
+        "fr": "Remplace la salutation par défaut. {name} désigne le nom de l'expéditeur. Laissez vide pour la valeur par défaut."
+      }
+    },
+    "api_key": {
+      "type": "string",
+      "writeOnly": true,
+      "maxLength": 200,
+      "title": {
+        "en": "API key (example of a secret)",
+        "fr": "Clé d'API (exemple de secret)"
+      },
+      "description": {
+        "en": "Write-only: Meshloom shows it as ******** once saved and never exports it. Delete this field if your plugin has no secret.",
+        "fr": "Écriture seule : Meshloom l'affiche sous la forme ******** une fois enregistrée et ne l'exporte jamais. Supprimez ce champ si votre plugin n'a pas de secret."
+      }
+    }
+  }
+}

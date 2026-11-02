@@ -10,6 +10,8 @@ sandbox; a maintainer then reviews it.
 
 - Publishing a plugin: [docs/authoring.md](docs/authoring.md) (French summary:
   [docs/authoring.fr.md](docs/authoring.fr.md)).
+- Writing one: start from [template/](template/), a working plugin with tests and a release
+  workflow (French: [template/README.fr.md](template/README.fr.md)).
 - Reporting a plugin or requesting a takedown: open an issue with the matching template.
 - Maintaining this repository: [AGENTS.md](AGENTS.md).
 
@@ -24,6 +26,7 @@ come later; until then this repository holds the entries and their validation on
 | `schema/entry.schema.json` | The entry format (owned here) |
 | `schema/manifest.schema.json`, `schema/vectors/` | Copies of the Meshloom plugin contract at the pinned commit |
 | `scripts/validate_catalogue.py` | The validator run by the CI |
+| `template/` | Plugin template for authors: plugin, tests, release workflow (copied, not run, here) |
 | `keys/` | Public index signing keys (empty for now) |
 | `docs/` | Author documentation |
 
