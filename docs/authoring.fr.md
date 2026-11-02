@@ -5,8 +5,15 @@ Version complète, en anglais : [authoring.md](authoring.md).
 Le catalogue liste des plugins relus. Votre plugin reste dans votre dépôt GitHub ; le
 catalogue enregistre seulement la release à laquelle se fier, par son SHA-256.
 
+0. **Partir du modèle** : [`template/`](../template/) est un plugin qui fonctionne, avec ses
+   tests et un workflow de release ([README](../template/README.fr.md), version anglaise
+   [README.md](../template/README.md)). Copiez-le dans un dépôt à vous ; le workflow construit
+   `plugin.zip`, son SHA-256 et `manifest.json` et les attache à une release GitHub quand vous
+   poussez un tag `v<version>`. Les mêmes assets permettent d'installer votre plugin depuis
+   Meshloom comme dépôt personnalisé (Réglages > Extensions > Dépôts personnalisés), sans
+   attendre le catalogue.
 1. **Vérifier le plugin** avec `python -m meshloom_plugin.dev check <dossier> --origin
-   third_party` depuis un clone de Meshloom. L'`id` est `<éditeur>.<nom>`, où l'éditeur est
+   third_party` depuis un clone de Meshloom. Le même outil rejoue des événements sur un hôte factice (`run <dossier> --replay fixture.json`) et construit l'archive de l'étape 2 (`pack <dossier> --out dist` écrit `plugin.zip` et `plugin.zip.sha256`). L'`id` est `<éditeur>.<nom>`, où l'éditeur est
    le propriétaire GitHub du dépôt en minuscules ; `meshloom.*` et `local.*` sont réservés.
    Licence acceptée : Apache-2.0, BSD-2-Clause, BSD-3-Clause, GPL-3.0-only, ISC,
    LGPL-3.0-only, MIT ou MPL-2.0 (y compris pour `vendor/`). Nom non trompeur, liens en

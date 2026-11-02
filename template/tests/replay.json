@@ -1,0 +1,38 @@
+{
+  "clock": 1700000000,
+  "channels": [
+    {
+      "key": "8B3387E9C5CDEA6AC9E5EDBAA115CD72",
+      "name": "Public",
+      "is_public": true
+    }
+  ],
+  "events": [
+    {
+      "hook": "message",
+      "params": {
+        "sender_name": "Alice",
+        "message_text": "!hello",
+        "channel_name": "Public"
+      }
+    },
+    {
+      "hook": "message",
+      "at": 1,
+      "params": {
+        "sender_name": "Bob",
+        "message_text": "good morning",
+        "channel_name": "Public"
+      }
+    },
+    {
+      "hook": "message",
+      "at": 120,
+      "params": {
+        "sender_name": "Carol",
+        "message_text": "!hello",
+        "channel_name": "Public"
+      }
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+# Release workflow of a Meshloom plugin (from the meshloom-plugins template).
+#
+# Push a tag `vX.Y.Z` equal to `plugin/manifest.json`'s version: the workflow runs the
+# tests and Meshloom's own `check`, builds the reproducible `plugin.zip` and its
+# `plugin.zip.sha256` with `pack`, and attaches them, with `manifest.json`, to a new
+# GitHub release. Those three assets are what Meshloom's "custom repository" install
+# reads, and `plugin.zip` plus its SHA-256 are what a catalogue pull request points at.
+# Run it by hand (Actions > release > Run workflow) for a dry run: everything but the
+# release, and it prints the SHA-256.
+#
+# A release asset is never replaced (the catalogue pins its SHA-256): this workflow only
+# creates releases and fails if the release already exists. To fix a mistake, bump the
+# version and tag again.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  # The Meshloom commit whose tooling (`check`, `run`, `pack`) is used. Keep it equal to
+  # MESHLOOM_REF in the meshloom-plugins catalogue's validate workflow: that is the
+  # contract your archive is judged against.
+  MESHLOOM_REPO: TwinRocket/meshloom
+  MESHLOOM_REF: e2bf78a186ebff13eb66bb7dcacf3e83805d0235
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the release and attach the assets
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.MESHLOOM_REPO }}
+          ref: ${{ env.MESHLOOM_REF }}
+          path: .meshloom
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+      - name: Set up Meshloom's tooling
+        working-directory: .meshloom
+        env:
+          UV_PYTHON: "3.13"
+        run: uv sync --frozen --no-dev
+      - name: The tag is the manifest version
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(jq -r .version plugin/manifest.json)"
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::tag $TAG does not match manifest version $version (expected v$version)"
+            exit 1
+          fi
+      - name: Tests
+        env:
+          MESHLOOM_DIR: .meshloom
+          REQUIRE_MESHLOOM: "1"
+        run: uv run --no-project --with pytest==9.0.3 pytest -q
+      - name: Check and pack
+        working-directory: .meshloom
+        run: |
+          .venv/bin/python -m meshloom_plugin.dev pack "$GITHUB_WORKSPACE/plugin" \
+            --strict --out "$GITHUB_WORKSPACE/dist"
+          cat "$GITHUB_WORKSPACE/dist/plugin.zip.sha256"
+      - name: Create the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          flags=(--verify-tag --generate-notes --title "$TAG")
+          case "$TAG" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$TAG" "${flags[@]}" --repo "$GITHUB_REPOSITORY" \
+            dist/plugin.zip dist/plugin.zip.sha256 plugin/manifest.json

@@ -1,0 +1,57 @@
+{
+  "manifest": 1,
+  "id": "acme.hello",
+  "version": "1.0.0",
+  "name": {
+    "en": "Hello",
+    "fr": "Bonjour"
+  },
+  "summary": {
+    "en": "Greets whoever sends !hello in a public channel",
+    "fr": "Salue celui qui envoie !hello dans un canal public"
+  },
+  "authors": [
+    {
+      "name": "Acme"
+    }
+  ],
+  "license": "MIT",
+  "categories": [
+    "fun"
+  ],
+  "runtime": {
+    "type": "python",
+    "api": 1,
+    "python": ">=3.11"
+  },
+  "compat": {
+    "meshloom": ">=5.0.0"
+  },
+  "entry": "plugin.py:Hello",
+  "hooks": [
+    "message"
+  ],
+  "permissions": {
+    "messages.read": {
+      "channels": "public",
+      "direct": false,
+      "outgoing": false
+    },
+    "messages.send": {
+      "targets": "reply"
+    }
+  },
+  "privacy": {
+    "sends_to_third_parties": [],
+    "stores_message_content": false
+  },
+  "config_schema": "config.schema.json",
+  "i18n": {
+    "en": "i18n/en.json",
+    "fr": "i18n/fr.json"
+  },
+  "readme": {
+    "en": "README.md",
+    "fr": "README.fr.md"
+  }
+}
